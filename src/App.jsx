@@ -6,7 +6,8 @@ import { searchGooglePlaces, getRouteDistance } from './lib/google';
 const DEFAULT_SETTINGS = {
   pin: '1234', businessName: 'Private Rides Kelowna',
   tagline: 'Premium private rides. Direct booking, no platform fees, no middleman.',
-  driverPhone: '', baseRate: 5, perKmRate: 2, minFare: 15, discoveryMultiplier: 1.3,
+  driverPhone: '', baseRate: 5, perKmRate: 2, tierKm: 20, perKmRate2: 1.5,
+  minFare: 15, discoveryMultiplier: 1.3,
   teslaAvailable: true, discoveryAvailable: true,
 };
 
@@ -72,7 +73,8 @@ function fromDbSettings(r) {
   return {
     pin: r.pin, businessName: r.business_name, tagline: r.tagline,
     driverPhone: r.driver_phone, baseRate: Number(r.base_rate),
-    perKmRate: Number(r.per_km_rate), minFare: Number(r.min_fare),
+    perKmRate: Number(r.per_km_rate), tierKm: Number(r.tier_km || 20),
+    perKmRate2: Number(r.per_km_rate_2 || 1.5), minFare: Number(r.min_fare),
     discoveryMultiplier: Number(r.discovery_multiplier),
     teslaAvailable: r.tesla_available, discoveryAvailable: r.discovery_available,
   };
@@ -81,6 +83,7 @@ function toDbSettings(s) {
   return {
     pin: s.pin, business_name: s.businessName, tagline: s.tagline,
     driver_phone: s.driverPhone, base_rate: s.baseRate, per_km_rate: s.perKmRate,
+    tier_km: s.tierKm, per_km_rate_2: s.perKmRate2,
     min_fare: s.minFare, discovery_multiplier: s.discoveryMultiplier,
     tesla_available: s.teslaAvailable, discovery_available: s.discoveryAvailable,
   };
@@ -120,11 +123,34 @@ async function removeBlocked(date) {
   await supabase.from('blocked_dates').delete().eq('date', date);
 }
 
-// ── Fare calc ──
+// ── Fare calc (tiered) ──
 function calcFare(s, veh, km) {
   if (!km || km <= 0) return null;
   const m = veh === 'discovery' ? (s.discoveryMultiplier || 1.3) : 1;
-  return Math.max(((s.baseRate || 5) + (s.perKmRate || 2) * km) * m, s.minFare || 15);
+  const tierKm = s.tierKm || 20;
+  const rate1 = s.perKmRate || 2;
+  const rate2 = s.perKmRate2 || rate1;
+  let distCost;
+  if (km <= tierKm) {
+    distCost = rate1 * km;
+  } else {
+    distCost = (rate1 * tierKm) + (rate2 * (km - tierKm));
+  }
+  return Math.max(((s.baseRate || 5) + distCost) * m, s.minFare || 15);
+}
+
+function fareBreakdown(s, veh, km) {
+  if (!km || km <= 0) return null;
+  const m = veh === 'discovery' ? (s.discoveryMultiplier || 1.3) : 1;
+  const tierKm = s.tierKm || 20;
+  const rate1 = s.perKmRate || 2;
+  const rate2 = s.perKmRate2 || rate1;
+  if (km <= tierKm) {
+    return `$${s.baseRate.toFixed(2)} base + ${km} km × $${rate1.toFixed(2)}`;
+  } else {
+    const overKm = Math.round((km - tierKm) * 10) / 10;
+    return `$${s.baseRate.toFixed(2)} base + ${tierKm} km × $${rate1.toFixed(2)} + ${overKm} km × $${rate2.toFixed(2)}`;
+  }
 }
 
 // ── Debounce ──
@@ -310,9 +336,10 @@ function BookingForm({ onBack, onSubmit, settings, blocked }) {
               <span style={{ color: '#aaa', fontSize: 13, fontWeight: 500 }}>Estimated Total</span>
               <span style={{ color: G, fontSize: 28, fontWeight: 700 }}>${estFare.toFixed(2)}</span>
             </div>
+            <div style={{ color: '#666', fontSize: 12, marginBottom: 4 }}>{routeInfo.km} km · ~{routeInfo.durationMinutes} min drive</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#666', fontSize: 12 }}>{routeInfo.km} km · ~{routeInfo.durationMinutes} min drive</span>
-              {form.vehicle === 'discovery' && <span style={{ color: '#666', fontSize: 11, background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>XL rate</span>}
+              <span style={{ color: '#555', fontSize: 11 }}>{fareBreakdown(settings, form.vehicle, routeInfo.km)}</span>
+              {form.vehicle === 'discovery' && <span style={{ color: '#666', fontSize: 11, background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>× {settings.discoveryMultiplier} XL</span>}
             </div>
           </div>
         )}
@@ -586,10 +613,22 @@ function SettingsTab({ settings, onSave }) {
       </div>
 
       <h3 style={{ color: '#aaa', fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16, marginTop: 28 }}>Pricing</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div><label style={S.lbl}>Base Rate ($)</label><input style={S.inp(false)} type="number" step="0.5" value={l.baseRate} onChange={e => setL({ ...l, baseRate: parseFloat(e.target.value) || 0 })} /></div>
-        <div><label style={S.lbl}>Per KM Rate ($)</label><input style={S.inp(false)} type="number" step="0.05" value={l.perKmRate} onChange={e => setL({ ...l, perKmRate: parseFloat(e.target.value) || 0 })} /></div>
         <div><label style={S.lbl}>Minimum Fare ($)</label><input style={S.inp(false)} type="number" step="1" value={l.minFare} onChange={e => setL({ ...l, minFare: parseFloat(e.target.value) || 0 })} /></div>
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', padding: '16px', marginBottom: 12 }}>
+        <p style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Distance Tiers</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div><label style={S.lbl}>Rate 1 ($/km)</label><input style={S.inp(false)} type="number" step="0.05" value={l.perKmRate} onChange={e => setL({ ...l, perKmRate: parseFloat(e.target.value) || 0 })} /></div>
+          <div><label style={S.lbl}>Up to (km)</label><input style={S.inp(false)} type="number" step="1" value={l.tierKm} onChange={e => setL({ ...l, tierKm: parseFloat(e.target.value) || 0 })} /></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div><label style={S.lbl}>Rate 2 ($/km)</label><input style={S.inp(false)} type="number" step="0.05" value={l.perKmRate2} onChange={e => setL({ ...l, perKmRate2: parseFloat(e.target.value) || 0 })} /></div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}><span style={{ color: '#666', fontSize: 12 }}>After {l.tierKm || 20} km</span></div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
         <div><label style={S.lbl}>Discovery Multiplier</label><input style={S.inp(false)} type="number" step="0.05" value={l.discoveryMultiplier} onChange={e => setL({ ...l, discoveryMultiplier: parseFloat(e.target.value) || 1 })} /></div>
       </div>
 
