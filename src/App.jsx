@@ -12,12 +12,12 @@ const DEFAULT_SETTINGS = {
 };
 
 const POPULAR_ROUTES = [
-  { from: 'Downtown', to: 'YLW Airport', km: 15 },
-  { from: 'Airport', to: 'Big White', km: 62 },
-  { from: 'Downtown', to: 'Big White', km: 58 },
-  { from: 'Downtown', to: 'West Kelowna', km: 12 },
-  { from: 'Downtown', to: 'UBCO', km: 18 },
-  { from: 'Airport', to: 'Vernon', km: 55 },
+  { from: 'Downtown', to: 'YLW Airport', km: 14 },
+  { from: 'Airport', to: 'Big White', km: 60 },
+  { from: 'Downtown', to: 'Big White', km: 61 },
+  { from: 'Downtown', to: 'West Kelowna', km: 7 },
+  { from: 'Downtown', to: 'UBCO', km: 12 },
+  { from: 'Airport', to: 'Vernon', km: 41 },
 ];
 
 const VEHICLES = [
