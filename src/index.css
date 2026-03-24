@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: linear-gradient(165deg, #0a0a0a 0%, #1a1a1a 50%, #0d1117 100%);
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+input::placeholder, textarea::placeholder { color: #555; }
+input:focus, textarea:focus, select:focus { border-color: rgba(200, 164, 78, 0.5) !important; }
+select option { background: #1a1a1a; color: #e0e0e0; }
