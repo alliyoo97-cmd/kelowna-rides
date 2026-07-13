@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { supabase } from './lib/supabase';
-import { searchGooglePlaces, getRouteDistance } from './lib/google';
+import { searchGooglePlaces, getRouteDistance, getZoneFare } from './lib/google';
 
 // ── Constants ──
 const DEFAULT_SETTINGS = {
@@ -124,8 +124,15 @@ async function removeBlocked(date) {
 }
 
 // ── Fare calc (tiered) ──
-function calcFare(s, veh, km) {
+// `route` is optional: { pickup: {lat,lng}, dropoff: {lat,lng} }. When provided,
+// flat-rate zones (e.g. Upper Mission/Kettle Valley <-> YLW) are checked first
+// and override the per-km calc if they match.
+function calcFare(s, veh, km, route) {
   if (!km || km <= 0) return null;
+  if (route?.pickup && route?.dropoff) {
+    const zoneFare = getZoneFare(veh, route.pickup.lat, route.pickup.lng, route.dropoff.lat, route.dropoff.lng);
+    if (zoneFare != null) return zoneFare;
+  }
   const m = veh === 'discovery' ? (s.discoveryMultiplier || 1.3) : 1;
   const tierKm = s.tierKm || 20;
   const rate1 = s.perKmRate || 2;
@@ -139,8 +146,12 @@ function calcFare(s, veh, km) {
   return Math.max(((s.baseRate || 5) + distCost) * m, s.minFare || 15);
 }
 
-function fareBreakdown(s, veh, km) {
+function fareBreakdown(s, veh, km, route) {
   if (!km || km <= 0) return null;
+  if (route?.pickup && route?.dropoff) {
+    const zoneFare = getZoneFare(veh, route.pickup.lat, route.pickup.lng, route.dropoff.lat, route.dropoff.lng);
+    if (zoneFare != null) return `Upper Mission/Kettle Valley ↔ YLW flat rate`;
+  }
   const m = veh === 'discovery' ? (s.discoveryMultiplier || 1.3) : 1;
   const tierKm = s.tierKm || 20;
   const rate1 = s.perKmRate || 2;
@@ -295,7 +306,7 @@ function BookingForm({ onBack, onSubmit, settings, blocked }) {
     return () => { cancelled = true; };
   }, [debouncedPickup, debouncedDropoff]);
 
-  const estFare = useMemo(() => routeInfo ? calcFare(settings, form.vehicle, routeInfo.km) : null, [routeInfo, settings, form.vehicle]);
+  const estFare = useMemo(() => routeInfo ? calcFare(settings, form.vehicle, routeInfo.km, routeInfo) : null, [routeInfo, settings, form.vehicle]);
 
   const validate = () => { const e = {}; if (!form.pickup.trim()) e.pickup = true; if (!form.dropoff.trim()) e.dropoff = true; if (!form.date) e.date = true; if (!form.name.trim()) e.name = true; if (!form.phone.trim()) e.phone = true; if (isBlocked) e.date = true; setErrors(e); return Object.keys(e).length === 0; };
 
@@ -338,7 +349,7 @@ function BookingForm({ onBack, onSubmit, settings, blocked }) {
             </div>
             <div style={{ color: '#666', fontSize: 12, marginBottom: 4 }}>{routeInfo.km} km · ~{routeInfo.durationMinutes} min drive</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#555', fontSize: 11 }}>{fareBreakdown(settings, form.vehicle, routeInfo.km)}</span>
+              <span style={{ color: '#555', fontSize: 11 }}>{fareBreakdown(settings, form.vehicle, routeInfo.km, routeInfo)}</span>
               {form.vehicle === 'discovery' && <span style={{ color: '#666', fontSize: 11, background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 6 }}>× {settings.discoveryMultiplier} XL</span>}
             </div>
           </div>
